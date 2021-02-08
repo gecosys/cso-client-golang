@@ -1,4 +1,4 @@
-package proxy
+package csoproxy
 
 type (
 	// Response is format message of HTTP response from Proxy server

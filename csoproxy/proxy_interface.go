@@ -1,4 +1,4 @@
-package proxy
+package csoproxy
 
 // Proxy interacts with Proxy server
 type Proxy interface {

@@ -33,21 +33,23 @@ const (
 
 	// TypeGroupCached is type of group message (message sent to a group of connections and cached on system)
 	TypeGroupCached = 0x06
+
+	// TypeDone is type of done message
+	TypeDone = 0x07
 )
 
 // Cipher is encrypted message
 type Cipher struct {
-	MessageID    uint64
-	ReqMessageID uint64 // if cipher is a response message (`IsRequest` == false), the ReqMessageID is MessageID of the request
-	MessageType  MessageType
-	IsFirst      bool
-	IsLast       bool
-	IsRequest    bool
-	IsEncrypted  bool
-	Name         string // name of receiver or sender
-	IV           []byte
-	Data         []byte
-	AuthenTag    []byte
+	MessageID   uint64
+	MessageType MessageType
+	IsFirst     bool
+	IsLast      bool
+	IsRequest   bool
+	IsEncrypted bool
+	Name        string // name of receiver or sender
+	IV          []byte
+	Data        []byte
+	AuthenTag   []byte
 }
 
 // ParseBytes converts bytes to Cipher
@@ -74,15 +76,6 @@ func ParseBytes(buffer []byte) (*Cipher, error) {
 			(uint64(buffer[3]) << 24) | (uint64(buffer[2]) << 16) | (uint64(buffer[1]) << 8) | uint64(buffer[0])
 	lenName := int(buffer[9])
 	isRequest := (flag & 0x10) != 0
-
-	var reqMsgID uint64
-	if !isRequest {
-		fixedLen += 8     // ReqMessageID (8)
-		posAuthenTag += 8 // ReqMessageID (8)
-		reqMsgID =
-			(uint64(buffer[17]) << 56) | (uint64(buffer[16]) << 48) | (uint64(buffer[15]) << 40) | (uint64(buffer[14]) << 32) |
-				(uint64(buffer[13]) << 24) | (uint64(buffer[12]) << 16) | (uint64(buffer[11]) << 8) | uint64(buffer[10])
-	}
 
 	if isEncrypted {
 		fixedLen += 28 // authenTag (16) + iv (12)
@@ -120,17 +113,16 @@ func ParseBytes(buffer []byte) (*Cipher, error) {
 	}
 
 	return &Cipher{
-		MessageID:    msgID,
-		ReqMessageID: reqMsgID,
-		IsEncrypted:  isEncrypted,
-		MessageType:  MessageType(flag & 0x0F),
-		IsFirst:      (flag & 0x40) != 0,
-		IsLast:       (flag & 0x20) != 0,
-		IsRequest:    isRequest,
-		Name:         name,
-		IV:           iv,
-		Data:         data,
-		AuthenTag:    authenTag,
+		MessageID:   msgID,
+		IsEncrypted: isEncrypted,
+		MessageType: MessageType(flag & 0x0F),
+		IsFirst:     (flag & 0x40) != 0,
+		IsLast:      (flag & 0x20) != 0,
+		IsRequest:   isRequest,
+		Name:        name,
+		IV:          iv,
+		Data:        data,
+		AuthenTag:   authenTag,
 	}, nil
 }
 
@@ -139,7 +131,6 @@ func (c *Cipher) IntoBytes() ([]byte, error) {
 	if c.IsEncrypted {
 		return BuildCipherBytes(
 			c.MessageID,
-			c.ReqMessageID,
 			c.MessageType,
 			c.IsFirst,
 			c.IsLast,
@@ -152,7 +143,6 @@ func (c *Cipher) IntoBytes() ([]byte, error) {
 	}
 	return BuildNoCipherBytes(
 		c.MessageID,
-		c.ReqMessageID,
 		c.MessageType,
 		c.IsFirst,
 		c.IsLast,
@@ -166,7 +156,6 @@ func (c *Cipher) IntoBytes() ([]byte, error) {
 func (c *Cipher) GetAad() ([]byte, error) {
 	return BuildAad(
 		c.MessageID,
-		c.ReqMessageID,
 		c.MessageType,
 		c.IsEncrypted,
 		c.IsFirst,
@@ -177,7 +166,7 @@ func (c *Cipher) GetAad() ([]byte, error) {
 }
 
 // BuildAad build aad of Cipher
-func BuildAad(msgID, reqMsgID uint64, msgType MessageType, encrypted, first, last, request bool, name string) ([]byte, error) {
+func BuildAad(msgID uint64, msgType MessageType, encrypted, first, last, request bool, name string) ([]byte, error) {
 	lenName := len(name)
 	if lenName == 0 || lenName > MaxConnectionNameLength {
 		return nil, errors.New("Invalid name")
@@ -203,9 +192,6 @@ func BuildAad(msgID, reqMsgID uint64, msgType MessageType, encrypted, first, las
 	}
 
 	fixedLen := 10
-	if !request {
-		fixedLen += 8 // ReqMessageID (8)
-	}
 	buffer := make([]byte, fixedLen+lenName, fixedLen+lenName)
 	buffer[0] = byte(msgID)
 	buffer[1] = byte(msgID >> 8)
@@ -217,33 +203,23 @@ func BuildAad(msgID, reqMsgID uint64, msgType MessageType, encrypted, first, las
 	buffer[7] = byte(msgID >> 56)
 	buffer[8] = byte(bEncrypted<<7 | bFirst<<6 | bLast<<5 | bRequest<<4 | byte(msgType))
 	buffer[9] = byte(lenName)
-	if !request {
-		buffer[10] = byte(reqMsgID)
-		buffer[11] = byte(reqMsgID >> 8)
-		buffer[12] = byte(reqMsgID >> 16)
-		buffer[13] = byte(reqMsgID >> 24)
-		buffer[14] = byte(reqMsgID >> 32)
-		buffer[15] = byte(reqMsgID >> 40)
-		buffer[16] = byte(reqMsgID >> 48)
-		buffer[17] = byte(reqMsgID >> 56)
-	}
 	copy(buffer[fixedLen:], []byte(name))
 
 	return buffer, nil
 }
 
 // BuildCipherBytes builds bytes of Cipher (encrypted mode)
-func BuildCipherBytes(msgID, reqMsgID uint64, msgType MessageType, first, last, request bool, name string, iv, data, authenTag []byte) ([]byte, error) {
-	return buildBytes(msgID, reqMsgID, msgType, true, first, last, request, name, iv, data, authenTag)
+func BuildCipherBytes(msgID uint64, msgType MessageType, first, last, request bool, name string, iv, data, authenTag []byte) ([]byte, error) {
+	return buildBytes(msgID, msgType, true, first, last, request, name, iv, data, authenTag)
 }
 
 // BuildNoCipherBytes builds bytes of Cipher (unencrypted mode)
-func BuildNoCipherBytes(msgID, reqMsgID uint64, msgType MessageType, first, last, request bool, name string, data []byte) ([]byte, error) {
+func BuildNoCipherBytes(msgID uint64, msgType MessageType, first, last, request bool, name string, data []byte) ([]byte, error) {
 	empty := make([]byte, 0)
-	return buildBytes(msgID, reqMsgID, msgType, false, first, last, request, name, empty, data, empty)
+	return buildBytes(msgID, msgType, false, first, last, request, name, empty, data, empty)
 }
 
-func buildBytes(msgID, reqMsgID uint64, msgType MessageType, encrypted, first, last, request bool, name string, iv, data, authenTag []byte) ([]byte, error) {
+func buildBytes(msgID uint64, msgType MessageType, encrypted, first, last, request bool, name string, iv, data, authenTag []byte) ([]byte, error) {
 	lenName := len(name)
 	if lenName == 0 || lenName > MaxConnectionNameLength {
 		return nil, errors.New("Invalid name")
@@ -275,9 +251,6 @@ func buildBytes(msgID, reqMsgID uint64, msgType MessageType, encrypted, first, l
 	}
 
 	fixedLen := 10
-	if !request {
-		fixedLen += 8 // ReqMessageID (8)
-	}
 	lenData := len(data)
 	lenBuffer := fixedLen + lenAuthenTag + lenIV + lenName + lenData
 	buffer := make([]byte, lenBuffer, lenBuffer)
@@ -291,16 +264,6 @@ func buildBytes(msgID, reqMsgID uint64, msgType MessageType, encrypted, first, l
 	buffer[7] = byte(msgID >> 56)
 	buffer[8] = byte(bEncrypted<<7 | bFirst<<6 | bLast<<5 | bRequest<<4 | byte(msgType))
 	buffer[9] = byte(lenName)
-	if !request {
-		buffer[10] = byte(reqMsgID)
-		buffer[11] = byte(reqMsgID >> 8)
-		buffer[12] = byte(reqMsgID >> 16)
-		buffer[13] = byte(reqMsgID >> 24)
-		buffer[14] = byte(reqMsgID >> 32)
-		buffer[15] = byte(reqMsgID >> 40)
-		buffer[16] = byte(reqMsgID >> 48)
-		buffer[17] = byte(reqMsgID >> 56)
-	}
 	posData := fixedLen + lenAuthenTag
 	if encrypted {
 		copy(buffer[fixedLen:], authenTag)

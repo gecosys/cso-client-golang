@@ -58,9 +58,8 @@ func (p *parserImpl) ParseReceivedMessage(content []byte) (*cipher.Cipher, error
 }
 
 func (p *parserImpl) BuildActivateMessage(ticketID uint32, ticketBytes []byte) ([]byte, error) {
-	var msgID uint64 = 0
 	name := strconv.FormatUint(uint64(ticketID), 10)
-	aad, err := cipher.BuildAad(msgID, 0, cipher.TypeActivation, true, true, true, true, name)
+	aad, err := cipher.BuildAad(0, 0, cipher.TypeActivation, true, true, true, true, name)
 	if err != nil {
 		return nil, err
 	}
@@ -68,16 +67,16 @@ func (p *parserImpl) BuildActivateMessage(ticketID uint32, ticketBytes []byte) (
 	if err != nil {
 		return nil, err
 	}
-	return cipher.BuildCipherBytes(msgID, 0, cipher.TypeActivation, true, true, true, name, iv, data, authenTag)
+	return cipher.BuildCipherBytes(0, 0, cipher.TypeActivation, true, true, true, name, iv, data, authenTag)
 }
 
-func (p *parserImpl) BuildMessage(msgID, reqMsgID uint64, recvName string, content []byte, encrypted, cached, first, last, request bool) ([]byte, error) {
+func (p *parserImpl) BuildMessage(msgID, msgTag uint64, recvName string, content []byte, encrypted, cached, first, last, request bool) ([]byte, error) {
 	msgType := p.getMessagetype(false, cached)
 	if !encrypted {
-		return cipher.BuildNoCipherBytes(msgID, reqMsgID, msgType, first, last, request, recvName, content)
+		return cipher.BuildNoCipherBytes(msgID, msgTag, msgType, first, last, request, recvName, content)
 	}
 
-	aad, err := cipher.BuildAad(msgID, reqMsgID, msgType, true, first, last, request, recvName)
+	aad, err := cipher.BuildAad(msgID, msgTag, msgType, true, first, last, request, recvName)
 	if err != nil {
 		return nil, err
 	}
@@ -87,16 +86,16 @@ func (p *parserImpl) BuildMessage(msgID, reqMsgID uint64, recvName string, conte
 		return nil, err
 	}
 
-	return cipher.BuildCipherBytes(msgID, reqMsgID, msgType, first, last, request, recvName, iv, data, authenTag)
+	return cipher.BuildCipherBytes(msgID, msgTag, msgType, first, last, request, recvName, iv, data, authenTag)
 }
 
-func (p *parserImpl) BuildGroupMessage(msgID, reqMsgID uint64, groupName string, content []byte, encrypted, cached, first, last, request bool) ([]byte, error) {
+func (p *parserImpl) BuildGroupMessage(msgID, msgTag uint64, groupName string, content []byte, encrypted, cached, first, last, request bool) ([]byte, error) {
 	msgType := p.getMessagetype(true, cached)
 	if !encrypted {
-		return cipher.BuildNoCipherBytes(msgID, reqMsgID, msgType, first, last, request, groupName, content)
+		return cipher.BuildNoCipherBytes(msgID, msgTag, msgType, first, last, request, groupName, content)
 	}
 
-	aad, err := cipher.BuildAad(msgID, reqMsgID, msgType, true, first, last, request, groupName)
+	aad, err := cipher.BuildAad(msgID, msgTag, msgType, true, first, last, request, groupName)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +105,7 @@ func (p *parserImpl) BuildGroupMessage(msgID, reqMsgID uint64, groupName string,
 		return nil, err
 	}
 
-	return cipher.BuildCipherBytes(msgID, reqMsgID, msgType, first, last, request, groupName, iv, data, authenTag)
+	return cipher.BuildCipherBytes(msgID, msgTag, msgType, first, last, request, groupName, iv, data, authenTag)
 }
 
 func (p *parserImpl) getMessagetype(isGroup, isCached bool) cipher.MessageType {

@@ -16,24 +16,38 @@ import (
 )
 
 type connectorImpl struct {
-	conn           csoconnection.Connection
-	counter        csocounter.Counter
-	chWriteMessage chan *csoqueue.ItemQueue
 	isActivated    bool
+	counter        csocounter.Counter
+	conn           csoconnection.Connection
+	chWriteMessage chan *csoqueue.ItemQueue
 	queueMessages  csoqueue.Queue
 	parser         csoparser.Parser
 	proxy          csoproxy.Proxy
 	conf           config.Config
 }
 
-// NewConnector inits a new instance of Connector interface
-func NewConnector(bufferSize uint, parser csoparser.Parser, proxy csoproxy.Proxy, conf config.Config) Connector {
+// DefaultConnector inits a new instance of Connector interface with default values
+func DefaultConnector(bufferSize int32, conf config.Config) Connector {
 	return &connectorImpl{
-		conn:           csoconnection.NewConnection(bufferSize),
-		counter:        nil,
-		chWriteMessage: make(chan *csoqueue.ItemQueue, bufferSize),
 		isActivated:    false,
+		counter:        nil,
+		conn:           csoconnection.NewConnection(bufferSize),
+		chWriteMessage: make(chan *csoqueue.ItemQueue),
 		queueMessages:  csoqueue.NewQueue(bufferSize),
+		parser:         csoparser.NewParser(),
+		proxy:          csoproxy.NewProxy(conf),
+		conf:           conf,
+	}
+}
+
+// NewConnector inits a new instance of Connector interface
+func NewConnector(bufferSize int32, queue csoqueue.Queue, parser csoparser.Parser, proxy csoproxy.Proxy, conf config.Config) Connector {
+	return &connectorImpl{
+		isActivated:    false,
+		counter:        nil,
+		conn:           csoconnection.NewConnection(bufferSize),
+		chWriteMessage: make(chan *csoqueue.ItemQueue),
+		queueMessages:  queue,
 		parser:         parser,
 		proxy:          proxy,
 		conf:           conf,
@@ -98,11 +112,10 @@ func (connector *connectorImpl) Listen(cb func(sender string, data []byte) error
 
 	var (
 		content     []byte
-		messages    [][]byte
 		itemQueue   *csoqueue.ItemQueue
 		msg         *cipher.Cipher
 		readyTicket *readyticket.ReadyTicket
-		delayTime   = 3 * time.Second
+		delayTime   = 100 * time.Millisecond
 		emptyData   = []byte{}
 	)
 	timer := time.NewTimer(delayTime)
@@ -110,14 +123,41 @@ func (connector *connectorImpl) Listen(cb func(sender string, data []byte) error
 	for {
 		select {
 		case <-timer.C:
-			messages = connector.queueMessages.NextMessages()
-			if messages == nil {
+			itemQueue = connector.queueMessages.NextMessage()
+			if itemQueue == nil {
 				timer.Reset(delayTime)
 				continue
 			}
-			for _, content = range messages {
-				connector.conn.SendMessage(content)
+			if itemQueue.IsGroup {
+				content, err = connector.parser.BuildGroupMessage(
+					itemQueue.MsgID,
+					itemQueue.MsgTag,
+					itemQueue.RecvName,
+					itemQueue.Content,
+					itemQueue.IsEncrypted,
+					itemQueue.IsCached,
+					itemQueue.IsFirst,
+					itemQueue.IsLast,
+					itemQueue.IsRequest,
+				)
+			} else {
+				content, err = connector.parser.BuildMessage(
+					itemQueue.MsgID,
+					itemQueue.MsgTag,
+					itemQueue.RecvName,
+					itemQueue.Content,
+					itemQueue.IsEncrypted,
+					itemQueue.IsCached,
+					itemQueue.IsFirst,
+					itemQueue.IsLast,
+					itemQueue.IsRequest,
+				)
 			}
+			if err != nil {
+				timer.Reset(delayTime)
+				continue
+			}
+			connector.conn.SendMessage(content)
 			timer.Reset(delayTime)
 		case itemQueue = <-connector.chWriteMessage:
 			connector.queueMessages.PushMessage(itemQueue)
@@ -199,20 +239,23 @@ func (connector *connectorImpl) SendMessageAndRetry(recvName string, content []b
 		return errors.New("Connection is not ready")
 	}
 
-	if connector.queueMessages.IsFull() {
+	if connector.queueMessages.TakeIndex() == false {
 		return errors.New("Queue is full")
 	}
 
-	msgID := connector.counter.NextWriteIndex()
-	data, err := connector.parser.BuildMessage(msgID, 0, recvName, content, isEncrypted, false, true, true, true)
-	if err != nil {
-		return err
-	}
-
 	connector.chWriteMessage <- &csoqueue.ItemQueue{
-		MsgID:       msgID,
-		Data:        data,
-		NumberRetry: numberRetry,
+		MsgID:       connector.counter.NextWriteIndex(),
+		MsgTag:      0,
+		RecvName:    recvName,
+		Content:     content,
+		IsEncrypted: isEncrypted,
+		IsCached:    false,
+		IsFirst:     true,
+		IsLast:      true,
+		IsRequest:   true,
+		IsGroup:     false,
+		NumberRetry: numberRetry + 1,
+		Timestamp:   0,
 	}
 	return nil
 }
@@ -222,20 +265,23 @@ func (connector *connectorImpl) SendGroupMessageAndRetry(groupName string, conte
 		return errors.New("Connection is not ready")
 	}
 
-	if connector.queueMessages.IsFull() {
+	if connector.queueMessages.TakeIndex() == false {
 		return errors.New("Queue is full")
 	}
 
-	msgID := connector.counter.NextWriteIndex()
-	data, err := connector.parser.BuildGroupMessage(msgID, 0, groupName, content, isEncrypted, false, true, true, true)
-	if err != nil {
-		return err
-	}
-
 	connector.chWriteMessage <- &csoqueue.ItemQueue{
-		MsgID:       msgID,
-		Data:        data,
-		NumberRetry: numberRetry,
+		MsgID:       connector.counter.NextWriteIndex(),
+		MsgTag:      0,
+		RecvName:    groupName,
+		Content:     content,
+		IsEncrypted: isEncrypted,
+		IsCached:    false,
+		IsFirst:     true,
+		IsLast:      true,
+		IsRequest:   true,
+		IsGroup:     true,
+		NumberRetry: numberRetry + 1,
+		Timestamp:   0,
 	}
 	return nil
 }

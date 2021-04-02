@@ -20,7 +20,7 @@ type connectionImpl struct {
 }
 
 // NewConnection inits a new instance of Connection interface
-func NewConnection(bufferSize uint) Connection {
+func NewConnection(bufferSize int32) Connection {
 	return &connectionImpl{
 		status:        StatusPrepare,
 		socket:        nil,

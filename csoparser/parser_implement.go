@@ -1,6 +1,7 @@
 package csoparser
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/gecosys/cso-client-golang/message/cipher"
@@ -32,6 +33,13 @@ func (p *parserImpl) ParseReceivedMessage(content []byte) (*cipher.Cipher, error
 	}
 
 	if msg.IsEncrypted == false {
+		rawBytes, err := msg.GetRawBytes()
+		if err != nil {
+			return nil, err
+		}
+		if utils.ValidateHMAC(p.secretKey, rawBytes, msg.Sign) == false {
+			return nil, errors.New("Invalid signature")
+		}
 		return msg, nil
 	}
 
@@ -73,7 +81,15 @@ func (p *parserImpl) BuildActivateMessage(ticketID uint32, ticketBytes []byte) (
 func (p *parserImpl) BuildMessage(msgID, msgTag uint64, recvName string, content []byte, encrypted, cached, first, last, request bool) ([]byte, error) {
 	msgType := p.getMessagetype(false, cached)
 	if !encrypted {
-		return cipher.BuildNoCipherBytes(msgID, msgTag, msgType, first, last, request, recvName, content)
+		rawBytes, err := cipher.BuildRawBytes(msgID, msgTag, msgType, false, first, last, request, recvName, content)
+		if err != nil {
+			return nil, err
+		}
+		sign, err := utils.CalcHMAC(p.secretKey, rawBytes)
+		if err != nil {
+			return nil, err
+		}
+		return cipher.BuildNoCipherBytes(msgID, msgTag, msgType, first, last, request, recvName, content, sign)
 	}
 
 	aad, err := cipher.BuildAad(msgID, msgTag, msgType, true, first, last, request, recvName)
@@ -92,7 +108,15 @@ func (p *parserImpl) BuildMessage(msgID, msgTag uint64, recvName string, content
 func (p *parserImpl) BuildGroupMessage(msgID, msgTag uint64, groupName string, content []byte, encrypted, cached, first, last, request bool) ([]byte, error) {
 	msgType := p.getMessagetype(true, cached)
 	if !encrypted {
-		return cipher.BuildNoCipherBytes(msgID, msgTag, msgType, first, last, request, groupName, content)
+		rawBytes, err := cipher.BuildRawBytes(msgID, msgTag, msgType, false, first, last, request, groupName, content)
+		if err != nil {
+			return nil, err
+		}
+		sign, err := utils.CalcHMAC(p.secretKey, rawBytes)
+		if err != nil {
+			return nil, err
+		}
+		return cipher.BuildNoCipherBytes(msgID, msgTag, msgType, first, last, request, groupName, content, sign)
 	}
 
 	aad, err := cipher.BuildAad(msgID, msgTag, msgType, true, first, last, request, groupName)

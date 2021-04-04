@@ -166,8 +166,8 @@ func (connector *connectorImpl) Listen(cb func(sender string, data []byte) error
 			if err != nil {
 				continue
 			}
-			switch msg.MessageType {
-			case cipher.TypeActivation:
+
+			if msg.MessageType == cipher.TypeActivation {
 				readyTicket, err = readyticket.ParseBytes(msg.Data)
 				if err != nil || !readyTicket.IsReady {
 					continue
@@ -180,34 +180,39 @@ func (connector *connectorImpl) Listen(cb func(sender string, data []byte) error
 						readyTicket.MaskRead,
 					)
 				}
-			case cipher.TypeUnknown:
 				continue
-			default:
-				if connector.isActivated == false {
-					continue
-				}
-
-				if msg.MessageID == 0 {
-					if msg.IsRequest {
-						cb(msg.Name, msg.Data)
-					}
-					continue
-				}
-
-				if msg.IsRequest == false { // response
-					connector.queueMessages.ClearMessage(msg.MessageID)
-					continue
-				}
-
-				if connector.counter.MarkReadDone(msg.MessageTag) {
-					err = cb(msg.Name, msg.Data)
-					if err != nil {
-						connector.counter.MarkReadUnused(msg.MessageTag)
-						continue
-					}
-				}
-				connector.sendResponse(msg.MessageID, msg.MessageTag, msg.Name, emptyData, msg.IsEncrypted)
 			}
+
+			if connector.isActivated == false {
+				continue
+			}
+
+			if msg.MessageType != cipher.TypeDone && msg.MessageType != cipher.TypeSingle && msg.MessageType != cipher.TypeSingleCached {
+				if msg.MessageType != cipher.TypeGroup && msg.MessageType != cipher.TypeGroupCached {
+					continue
+				}
+			}
+
+			if msg.MessageID == 0 {
+				if msg.IsRequest {
+					cb(msg.Name, msg.Data)
+				}
+				continue
+			}
+
+			if msg.IsRequest == false { // response
+				connector.queueMessages.ClearMessage(msg.MessageID)
+				continue
+			}
+
+			if connector.counter.MarkReadDone(msg.MessageTag) {
+				err = cb(msg.Name, msg.Data)
+				if err != nil {
+					connector.counter.MarkReadUnused(msg.MessageTag)
+					continue
+				}
+			}
+			connector.sendResponse(msg.MessageID, msg.MessageTag, msg.Name, emptyData, msg.IsEncrypted)
 		}
 	}
 }

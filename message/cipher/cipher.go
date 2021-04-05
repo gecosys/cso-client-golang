@@ -138,6 +138,7 @@ func ParseBytes(buffer []byte) (*Cipher, error) {
 		IV:          iv,
 		Data:        data,
 		AuthenTag:   authenTag,
+		Sign:        sign,
 	}, nil
 }
 

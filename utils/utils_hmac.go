@@ -1,28 +1,28 @@
 package utils
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"errors"
 )
 
 func CalcHMAC(key, data []byte) ([]byte, error) {
 	mac := hmac.New(sha256.New, key)
-	_, err := mac.Write(data)
+	n, err := mac.Write(data)
 	if err != nil {
 		return nil, err
+	}
+	if n != len(data) {
+		return nil, errors.New("invalid hmac")
 	}
 	return mac.Sum(nil), nil
 }
 
 func ValidateHMAC(key, data, expectedHMAC []byte) bool {
 	result, err := CalcHMAC(key, data)
-	if err != nil || len(result) != len(expectedHMAC) {
+	if err != nil {
 		return false
 	}
-	for idx, val := range expectedHMAC {
-		if val != result[idx] {
-			return false
-		}
-	}
-	return true
+	return bytes.Equal(result, expectedHMAC)
 }

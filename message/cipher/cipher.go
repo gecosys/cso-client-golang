@@ -128,7 +128,7 @@ func ParseBytes(buffer []byte) (*Cipher, error) {
 
 	return &Cipher{
 		MessageID:   msgID,
-		MessageType: MessageType(flag & 0x0F),
+		MessageType: MessageType(flag & 0x07),
 		MessageTag:  msgTag,
 		IsFirst:     (flag & 0x40) != 0,
 		IsLast:      (flag & 0x20) != 0,

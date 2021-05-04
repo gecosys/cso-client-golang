@@ -127,7 +127,6 @@ func (proxy *proxyImpl) ExchangeKey(projectID, uniqueName string) (*ServerKey, e
 
 // RegisterConnection registers connection on a Hub server
 func (proxy *proxyImpl) RegisterConnection(projectID, projectToken, connName string, serverKey *ServerKey) (*ServerTicket, error) {
-	// Encrypt project-token
 	clientPrivKey, err := utils.GenerateDHPrivateKey()
 	if err != nil {
 		return nil, err

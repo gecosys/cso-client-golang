@@ -6,19 +6,17 @@ import (
 )
 
 type queueImpl struct {
-	cap                  int32
-	len                  int32
-	items                []*ItemQueue
-	bufferRemovedIndices []int32
+	cap   int32
+	len   int32
+	items []*ItemQueue
 }
 
 // NewQueue inits a new instance of Queue interface
 func NewQueue(cap int32) Queue {
 	return &queueImpl{
-		cap:                  cap,
-		len:                  0,
-		items:                make([]*ItemQueue, cap, cap),
-		bufferRemovedIndices: make([]int32, 0, cap),
+		cap:   cap,
+		len:   0,
+		items: make([]*ItemQueue, cap, cap),
 	}
 }
 
@@ -44,7 +42,6 @@ func (q *queueImpl) PushMessage(item *ItemQueue) {
 func (q *queueImpl) NextMessage() *ItemQueue {
 	var nextItem *ItemQueue
 	now := uint64(time.Now().Unix())
-	q.bufferRemovedIndices = q.bufferRemovedIndices[:0]
 	for idx, item := range q.items {
 		if item == nil {
 			continue
@@ -55,12 +52,9 @@ func (q *queueImpl) NextMessage() *ItemQueue {
 			item.NumberRetry--
 		}
 		if item.NumberRetry == 0 {
-			q.bufferRemovedIndices = append(q.bufferRemovedIndices, int32(idx))
+			q.items[idx] = nil
+			atomic.AddInt32(&q.len, -1)
 		}
-	}
-	for _, idx := range q.bufferRemovedIndices {
-		q.items[idx] = nil
-		atomic.AddInt32(&q.len, -1)
 	}
 	return nextItem
 }

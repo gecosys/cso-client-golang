@@ -2,7 +2,6 @@ package csoconnector
 
 // Connector keeps connection to server
 type Connector interface {
-	Open()
 	Listen(cb func(sender string, data []byte) error) error
 
 	SendMessage(recvName string, content []byte, isEncrypted, isCached bool) error

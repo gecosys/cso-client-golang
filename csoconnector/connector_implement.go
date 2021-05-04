@@ -54,58 +54,11 @@ func NewConnector(bufferSize int32, queue csoqueue.Queue, parser csoparser.Parse
 	}
 }
 
-func (connector *connectorImpl) Open() {
-	var (
-		err          error
-		serverTicket *csoproxy.ServerTicket
-		delayTime    = 3 * time.Second
-	)
-	for {
-		serverTicket, err = connector.prepare()
-		if err != nil {
-			log.Printf("Error prepare: %s", err.Error())
-			time.Sleep(delayTime) // delay `delayTime` seconds before attempting to reconnect to Cloud Socket system
-			continue
-		}
-
-		// Connect to Cloud Socket system
-		connector.parser.SetSecretKey(serverTicket.ServerSecretKey)
-		err = connector.conn.Connect(serverTicket.HubAddress)
-		if err != nil {
-			log.Printf("Error connect: %s", err.Error())
-			time.Sleep(delayTime) // delay `delayTime` seconds before attempting to reconnect to Cloud Socket system
-			continue
-		}
-
-		// Activate the connection
-		isDisonnected := false
-		connector.isActivated = false
-		go func() {
-			ticker := time.NewTimer(0)
-			for range ticker.C {
-				if isDisonnected || connector.isActivated {
-					break
-				}
-				err = connector.activateConnection(serverTicket.TicketID, serverTicket.TicketBytes)
-				if err != nil {
-					log.Printf("Error activation: %s", err.Error())
-				}
-				ticker.Reset(delayTime)
-			}
-			ticker.Stop()
-		}()
-
-		err = connector.conn.LoopListen()
-		if err != nil {
-			log.Printf("Error listen: %s", err.Error())
-		}
-		isDisonnected = true
-		time.Sleep(delayTime) // delay `delayTime` seconds before attempting to reconnect to Cloud Socket system
-	}
-}
-
 func (connector *connectorImpl) Listen(cb func(sender string, data []byte) error) error {
-	chNextMessage, err := connector.conn.GetReadChannel()
+	// Keep connection to Cloud Socket system
+	go connector.loopReconnect()
+
+	chRecvMessage, err := connector.conn.GetReadChannel()
 	if err != nil {
 		return err
 	}
@@ -161,7 +114,7 @@ func (connector *connectorImpl) Listen(cb func(sender string, data []byte) error
 			timer.Reset(delayTime)
 		case itemQueue = <-connector.chWriteMessage:
 			connector.queueMessages.PushMessage(itemQueue)
-		case content = <-chNextMessage:
+		case content = <-chRecvMessage:
 			msg, err = connector.parser.ParseReceivedMessage(content)
 			if err != nil {
 				continue
@@ -289,6 +242,56 @@ func (connector *connectorImpl) SendGroupMessageAndRetry(groupName string, conte
 		Timestamp:   0,
 	}
 	return nil
+}
+
+func (connector *connectorImpl) loopReconnect() {
+	var (
+		err          error
+		serverTicket *csoproxy.ServerTicket
+		delayTime    = 3 * time.Second
+	)
+	for {
+		serverTicket, err = connector.prepare()
+		if err != nil {
+			log.Printf("Error prepare: %s", err.Error())
+			time.Sleep(delayTime) // delay `delayTime` seconds before attempting to reconnect to Cloud Socket system
+			continue
+		}
+
+		// Connect to Cloud Socket system
+		connector.parser.SetSecretKey(serverTicket.ServerSecretKey)
+		err = connector.conn.Connect(serverTicket.HubAddress)
+		if err != nil {
+			log.Printf("Error connect: %s", err.Error())
+			time.Sleep(delayTime) // delay `delayTime` seconds before attempting to reconnect to Cloud Socket system
+			continue
+		}
+
+		// Activate the connection
+		isDisonnected := false
+		connector.isActivated = false
+		go func() {
+			ticker := time.NewTimer(0)
+			for range ticker.C {
+				if isDisonnected || connector.isActivated {
+					break
+				}
+				err = connector.activateConnection(serverTicket.TicketID, serverTicket.TicketBytes)
+				if err != nil {
+					log.Printf("Error activation: %s", err.Error())
+				}
+				ticker.Reset(delayTime)
+			}
+			ticker.Stop()
+		}()
+
+		err = connector.conn.LoopListen()
+		if err != nil {
+			log.Printf("Error listen: %s", err.Error())
+		}
+		isDisonnected = true
+		time.Sleep(delayTime) // delay `delayTime` seconds before attempting to reconnect to Cloud Socket system
+	}
 }
 
 func (connector *connectorImpl) prepare() (*csoproxy.ServerTicket, error) {

@@ -24,11 +24,11 @@ type configImpl struct {
 }
 
 // NewConfig inits a new instance of Config
-func NewConfig(projectID, projectToken, uniqueName, csoPublicKey, csoAddress string) Config {
+func NewConfig(projectID, projectToken, connName, csoPublicKey, csoAddress string) Config {
 	return &configImpl{
 		ProjectID:      projectID,
 		ProjectToken:   projectToken,
-		ConnectionName: uniqueName,
+		ConnectionName: connName,
 		CSOPublicKey:   csoPublicKey,
 		CSOAddress:     csoAddress,
 	}

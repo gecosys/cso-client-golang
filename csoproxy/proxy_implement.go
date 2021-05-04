@@ -35,12 +35,12 @@ func NewProxy(conf config.Config) Proxy {
 }
 
 // ExchangeKey gets the public keys of connection
-func (proxy *proxyImpl) ExchangeKey(projectID, uniqueName string) (*ServerKey, error) {
+func (proxy *proxyImpl) ExchangeKey() (*ServerKey, error) {
 	url := fmt.Sprintf("%s/exchange-key", proxy.conf.GetCSOAddress())
 
 	req := make(map[string]interface{})
-	req["project_id"] = projectID
-	req["unique_name"] = uniqueName
+	req["project_id"] = proxy.conf.GetProjectID()
+	req["unique_name"] = proxy.conf.GetConnectionName()
 
 	buf, err := jsoniter.ConfigFastest.Marshal(&req)
 	if err != nil {
@@ -126,7 +126,7 @@ func (proxy *proxyImpl) ExchangeKey(projectID, uniqueName string) (*ServerKey, e
 }
 
 // RegisterConnection registers connection on a Hub server
-func (proxy *proxyImpl) RegisterConnection(projectID, projectToken, connName string, serverKey *ServerKey) (*ServerTicket, error) {
+func (proxy *proxyImpl) RegisterConnection(serverKey *ServerKey) (*ServerTicket, error) {
 	clientPrivKey, err := utils.GenerateDHPrivateKey()
 	if err != nil {
 		return nil, err
@@ -143,10 +143,12 @@ func (proxy *proxyImpl) RegisterConnection(projectID, projectToken, connName str
 	}
 
 	// Encrypt project's token by AES-GCM
-	decodedToken, err := base64.StdEncoding.DecodeString(projectToken)
+	decodedToken, err := base64.StdEncoding.DecodeString(proxy.conf.GetProjectToken())
 	if err != nil {
 		return nil, err
 	}
+	projectID := proxy.conf.GetProjectID()
+	connName := proxy.conf.GetConnectionName()
 	strClientPubKey := clientPubKey.String()
 	lenProjectID := len(projectID)
 	lenProjectIDConnName := lenProjectID + len(connName)

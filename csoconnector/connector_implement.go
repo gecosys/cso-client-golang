@@ -292,20 +292,11 @@ func (connector *connectorImpl) SendGroupMessageAndRetry(groupName string, conte
 }
 
 func (connector *connectorImpl) prepare() (*csoproxy.ServerTicket, error) {
-	projectID := connector.conf.GetProjectID()
-	connName := connector.conf.GetConnectionName()
-
-	serverKey, err := connector.proxy.ExchangeKey(projectID, connName)
+	serverKey, err := connector.proxy.ExchangeKey()
 	if err != nil {
 		return nil, err
 	}
-
-	return connector.proxy.RegisterConnection(
-		projectID,
-		connector.conf.GetProjectToken(),
-		connName,
-		serverKey,
-	)
+	return connector.proxy.RegisterConnection(serverKey)
 }
 
 func (connector *connectorImpl) activateConnection(ticketID uint32, ticketBytes []byte) error {

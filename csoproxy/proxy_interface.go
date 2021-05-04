@@ -2,6 +2,6 @@ package csoproxy
 
 // Proxy interacts with Proxy server
 type Proxy interface {
-	ExchangeKey(projectID, uniqueName string) (*ServerKey, error)
-	RegisterConnection(projectID, projectToken, connName string, serverKey *ServerKey) (*ServerTicket, error)
+	ExchangeKey() (*ServerKey, error)
+	RegisterConnection(serverKey *ServerKey) (*ServerTicket, error)
 }
